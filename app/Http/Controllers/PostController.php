@@ -16,7 +16,7 @@ class PostController extends Controller
             'description' => ['required','string','max:3000'],
         ])->validated();
 
-        $post = Post::create($validated);
+        Post::create($validated);
         
         return response()->json(['message' => 'Post created successfully'], 201);
 

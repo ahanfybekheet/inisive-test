@@ -7,7 +7,7 @@ use App\Models\Post;
 use App\Models\SendPost;
 use App\Models\Subscriber;
 use App\Notifications\PostNotification;
-
+use Illuminate\Support\Facades\DB;
 class SendSubscriberCommand extends Command
 {
     /**
@@ -32,37 +32,27 @@ class SendSubscriberCommand extends Command
         Subscriber::with('website')->chunk(200, function ($subscribers) {
             foreach ($subscribers as $subscriber) {
                 $website = $subscriber->website;
-                $allPosts = $website->posts;
-    
-                // Get notified post IDs for the current subscriber
                 $notifiedPosts = SendPost::where('subscriber_id', $subscriber->id)
-                    ->whereIn('post_id', $allPosts->pluck('id'))
                     ->pluck('post_id')
                     ->toArray();
     
-                $postsToNotify = [];
+                $postsToNotify = $website->posts()
+                    ->whereNotIn('id', $notifiedPosts)
+                    ->get();
     
-                foreach ($allPosts as $post) {
-                    if (!in_array($post->id, $notifiedPosts)) {
-                        $postsToNotify[] = $post;
-                    }
-                }
-    
-                if (!empty($postsToNotify)) {
-                    SendPost::insert(array_map(function ($post) use ($subscriber) {
-                        return [
+                foreach ($postsToNotify as $post) {
+                    DB::transaction(function () use ($post, $subscriber) {
+                        $subscriber->notify(new PostNotification($post));
+                        SendPost::create([
                             'post_id' => $post->id,
                             'subscriber_id' => $subscriber->id,
-                        ];
-                    }, $postsToNotify));
-    
-                    foreach ($postsToNotify as $post) {
-                        $subscriber->notify(new PostNotification($post));
-                    }
+                        ]);
+                    });
                 }
             }
         });
     
         return 0;
     }
+    
 }
